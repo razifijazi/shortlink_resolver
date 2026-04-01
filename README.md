@@ -13,7 +13,7 @@ Resolver HTTP sederhana untuk shortlink model interstitial + form submit, dengan
 - Dashboard/web UI di port `4050`
 
 ## Flow yang saat ini didukung
-Contoh domain seperti `savetub.com`:
+Contoh domain seperti `link.com`:
 1. GET halaman shortlink
 2. Parse form `go-popup` dan `go-link`
 3. Submit `go-popup` (`/links/popad`)
@@ -44,12 +44,12 @@ shortlink_resolver/
 Resolve satu shortlink:
 ```bash
 cd shortlink_resolver
-python3 resolve.py 'https://savetub.com/u4O54dM'
+python3 resolve.py 'https://link.com/u4O54dM'
 ```
 
 Contoh output:
 ```text
-https://ystream.id/download/8w0j3fms815x
+https://link.com/download/8w0j3fms815x
 ```
 
 ## Menjalankan dashboard web
@@ -126,7 +126,7 @@ Pastikan rule inbound TCP `4050` dibuka juga di panel provider VPS.
    - **Copy All Results** untuk copy semua final link sekaligus
 
 ## Catatan penting
-- Resolver ini saat ini dituning untuk flow seperti `savetub.com`
+- Resolver ini saat ini dituning untuk flow seperti `link.com`
 - Tidak semua shortlink service punya flow yang sama
 - Beberapa domain mungkin butuh penyesuaian tambahan
 - Countdown saat ini mengikuti nilai timer halaman (maksimal 10 detik)
