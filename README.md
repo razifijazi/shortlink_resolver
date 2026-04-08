@@ -73,6 +73,35 @@ Kalau server punya IP publik dan port dibuka, bisa diakses dari browser lain lew
 http://IP-VPS:4050
 ```
 
+## Deploy sebagai website biasa di aaPanel (tanpa port di URL)
+App ini sekarang kompatibel dengan **WSGI**, jadi bisa dijalankan sebagai website biasa lewat domain/subdomain di aaPanel tanpa mengubah fungsi.
+
+### Opsi 1 — Python Project / WSGI di aaPanel
+Kalau aaPanel kamu punya menu **Python Project**:
+
+- **Project path:** folder repo `shortlink_resolver`
+- **Startup file / module:** `app`
+- **Application callable:** `application`
+- **Python version:** 3.x
+- **Requirements:** install package `requests`
+
+Konsepnya: aaPanel akan menjalankan WSGI app `app:application`, lalu domain diarahkan langsung ke app ini. Jadi user akses lewat:
+
+```text
+https://subdomain-kamu.com
+```
+
+bukan `:4050`.
+
+### Opsi 2 — Tetap pakai mode lama
+Kalau tidak pakai WSGI, mode lama masih tetap bisa dipakai:
+
+```bash
+python3 app.py
+```
+
+Jadi perubahan ini **tidak mengubah fungsi resolver**, hanya menambah mode deploy yang lebih enak buat hosting panel.
+
 ## Menjalankan di background
 Cara sederhana:
 ```bash

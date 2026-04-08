@@ -1,10 +1,15 @@
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import parse_qs
 import html
-from resolve import resolve
+import os
 
-HOST='0.0.0.0'
-PORT=4050
+try:
+    from .resolve import resolve
+except ImportError:
+    from resolve import resolve
+
+HOST = os.getenv('HOST', '0.0.0.0')
+PORT = int(os.getenv('PORT', '4050'))
 
 INDEX='''<!doctype html>
 <html><head><meta charset="utf-8"><title>shortlink_resolver</title>
@@ -81,39 +86,24 @@ function fallbackCopy(text, onok) {
 __CONTENT__
 </body></html>'''
 
-class H(BaseHTTPRequestHandler):
-    def _send(self, body, status=200):
-        data=body.encode('utf-8')
-        self.send_response(status)
-        self.send_header('Content-Type','text/html; charset=utf-8')
-        self.send_header('Content-Length', str(len(data)))
-        self.end_headers()
-        self.wfile.write(data)
 
-    def render(self, urls='', content=''):
-        return INDEX.replace('__URLS__', urls).replace('__CONTENT__', content)
+def render(urls='', content=''):
+    return INDEX.replace('__URLS__', urls).replace('__CONTENT__', content)
 
-    def do_GET(self):
-        self._send(self.render())
 
-    def do_POST(self):
-        if self.path != '/resolve':
-            self._send('Not found',404); return
-        length=int(self.headers.get('Content-Length','0'))
-        body=self.rfile.read(length).decode('utf-8')
-        raw=parse_qs(body).get('urls',[''])[0]
-        urls=[u.strip() for u in raw.splitlines() if u.strip()]
-        blocks=[]
-        final_links=[]
-        for idx, url in enumerate(urls, start=1):
-            try:
-                final=resolve(url)
-                final_links.append(final)
-                esc_final=html.escape(final)
-                esc_url=html.escape(url)
-                href=html.escape(final, quote=True)
-                result_id=f'result-link-{idx}'
-                blocks.append(f'''<div class="result-item">
+def build_results_page(raw):
+    urls = [u.strip() for u in raw.splitlines() if u.strip()]
+    blocks = []
+    final_links = []
+    for idx, url in enumerate(urls, start=1):
+        try:
+            final = resolve(url)
+            final_links.append(final)
+            esc_final = html.escape(final)
+            esc_url = html.escape(url)
+            href = html.escape(final, quote=True)
+            result_id = f'result-link-{idx}'
+            blocks.append(f'''<div class="result-item">
 <div class="result-head"><span class="ok">[OK]</span> {esc_url}</div>
 <div class="result-link" id="{result_id}">{esc_final}</div>
 <div class="actions">
@@ -121,25 +111,76 @@ class H(BaseHTTPRequestHandler):
 <a href="{href}" target="_blank" rel="noopener noreferrer"><button class="open-btn" type="button">Open in new tab</button></a>
 </div>
 </div>''')
-            except Exception as e:
-                esc_err=html.escape(str(e))
-                esc_url=html.escape(url)
-                blocks.append(f'''<div class="result-item">
+        except Exception as e:
+            esc_err = html.escape(str(e))
+            esc_url = html.escape(url)
+            blocks.append(f'''<div class="result-item">
 <div class="result-head"><span class="err">[ERR]</span> {esc_url}</div>
 <pre>{esc_err}</pre>
 </div>''')
-        left=''.join(blocks) if blocks else ''
-        agg_text='\n'.join(final_links)
-        right=''
-        if final_links:
-            right=f'''<div class="aggregate">
+    left = ''.join(blocks) if blocks else ''
+    agg_text = '\n'.join(final_links)
+    right = ''
+    if final_links:
+        right = f'''<div class="aggregate">
 <h3>Final Links Only</h3>
 <textarea id="all-results" readonly>{html.escape(agg_text)}</textarea>
 <div class="actions">
 <button class="copy-all-btn" type="button" onclick="copyAllResults(this)">Copy All Results</button>
 </div>
 </div>'''
-        content = f'<div class="layout"><div>{left}</div><div>{right}</div></div>' if (left or right) else ''
-        self._send(self.render(urls=html.escape(raw), content=content))
+    content = f'<div class="layout"><div>{left}</div><div>{right}</div></div>' if (left or right) else ''
+    return render(urls=html.escape(raw), content=content)
 
-HTTPServer((HOST,PORT),H).serve_forever()
+
+def handle_request(method, request_path, body_bytes=b''):
+    path = (request_path or '/').split('?', 1)[0]
+    if method == 'GET' and path == '/':
+        return 200, render()
+    if method == 'POST' and path == '/resolve':
+        raw = parse_qs(body_bytes.decode('utf-8')).get('urls', [''])[0]
+        return 200, build_results_page(raw)
+    return 404, 'Not found'
+
+
+class H(BaseHTTPRequestHandler):
+    def _send(self, body, status=200):
+        data = body.encode('utf-8')
+        self.send_response(status)
+        self.send_header('Content-Type', 'text/html; charset=utf-8')
+        self.send_header('Content-Length', str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
+    def do_GET(self):
+        status, body = handle_request('GET', self.path)
+        self._send(body, status)
+
+    def do_POST(self):
+        length = int(self.headers.get('Content-Length', '0'))
+        body = self.rfile.read(length)
+        status, content = handle_request('POST', self.path, body)
+        self._send(content, status)
+
+
+def application(environ, start_response):
+    method = environ.get('REQUEST_METHOD', 'GET').upper()
+    path = environ.get('PATH_INFO', '/')
+    try:
+        length = int(environ.get('CONTENT_LENGTH') or '0')
+    except ValueError:
+        length = 0
+    body = environ['wsgi.input'].read(length) if length > 0 else b''
+    status_code, content = handle_request(method, path, body)
+    status_text = '200 OK' if status_code == 200 else '404 Not Found'
+    payload = content.encode('utf-8')
+    headers = [
+        ('Content-Type', 'text/html; charset=utf-8'),
+        ('Content-Length', str(len(payload))),
+    ]
+    start_response(status_text, headers)
+    return [payload]
+
+
+if __name__ == '__main__':
+    HTTPServer((HOST, PORT), H).serve_forever()
